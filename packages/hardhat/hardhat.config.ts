@@ -1,5 +1,15 @@
 import { HardhatUserConfig } from "hardhat/config";
 import { networks } from "./config";
+import "@nomicfoundation/hardhat-ethers";
+import "@nomicfoundation/hardhat-chai-matchers";
+import "@typechain/hardhat";
+import "hardhat-gas-reporter";
+import "solidity-coverage";
+import "@nomicfoundation/hardhat-verify";
+import "hardhat-deploy";
+import "hardhat-deploy-ethers";
+import { task } from "hardhat/config";
+import generateTsAbis from "./scripts/generateTsAbis";
 
 const providerApiKey = process.env.ALCHEMY_API_KEY || "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF";
 
@@ -29,5 +39,12 @@ const config: HardhatUserConfig = {
     },
   },
 };
+
+task("deploy").setAction(async (args, hre, runSuper) => {
+  // Run the original deploy task
+  await runSuper(args);
+  // Force run the generateTsAbis script
+  await generateTsAbis(hre);
+});
 
 export default config;
