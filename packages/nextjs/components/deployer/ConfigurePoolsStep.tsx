@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { encodePacked } from "viem";
 import { useWriteContract } from "wagmi";
 import { abi } from "~~/../hardhat/artifacts/@chainlink/contracts-ccip/contracts/pools/BurnMintTokenPool.sol/BurnMintTokenPool.json";
 import { useTransactor } from "~~/hooks/scaffold-eth";
 import { NETWORKS } from "~~/utils/ccip/config";
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 interface Props {
   tokenAddresses: { fuji: string; arbitrum: string };
@@ -52,8 +52,8 @@ export default function ConfigurePoolsStep({
 
   const chainUpdate = {
     remoteChainSelector: BigInt(getRemoteChainSelector()),
-    remotePoolAddresses: getRemotePoolAddresses().map(addr => encodePacked(["address"], [addr])),
-    remoteTokenAddress: encodePacked(["address"], [getRemoteTokenAddress()]),
+    remotePoolAddresses: getRemotePoolAddresses().map(addr => encodeAbiParameters(parseAbiParameters("address"), [addr as `0x${string}`])),
+    remoteTokenAddress: encodeAbiParameters(parseAbiParameters("address"), [getRemoteTokenAddress() as `0x${string}`]),
     outboundRateLimiterConfig: {
       isEnabled: outboundRateLimitEnabled,
       capacity: BigInt(outboundRateLimitCapacity),

@@ -1,11 +1,11 @@
 // src/components/cross-chain/DeployTokensStep.tsx
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useWriteContract } from "wagmi";
 import { useDeployContract, useWaitForTransactionReceipt } from "wagmi";
 import {
   abi,
   bytecode,
-} from "~~/../hardhat/artifacts/@chainlink/contracts/src/v0.8/shared/token/ERC20/BurnMintERC20.sol/BurnMintERC20.json";
+} from "~~/../hardhat/artifacts/contracts/RWATokenToken.sol/RWAToken.json";
 import { EtherInput, InputBase, IntegerInput } from "~~/components/scaffold-eth";
 import { NETWORKS } from "~~/utils/ccip/config";
 
@@ -24,12 +24,13 @@ export default function DeployTokensStep({
   setLoadingManager,
   setAction,
 }: DeployTokensStepProps) {
-  const { chain } = useAccount();
+  const { chain, address } = useAccount();
+  const { writeContractAsync } = useWriteContract();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [decimals, setDecimals] = useState("18");
-  const [maxSupply, setMaxSupply] = useState("1000000");
-  const [preMint, setPreMint] = useState("1000");
+  const [maxSupply, setMaxSupply] = useState("0");
+  const [preMint, setPreMint] = useState("100000000000000000000000");
   const [deployNetwork, setDeployNetwork] = useState<"fuji" | "arbitrum" | null>(null);
   const [tokenDeployed, setTokenDeployed] = useState({ fuji: false, arbitrum: false });
 
@@ -64,6 +65,34 @@ export default function DeployTokensStep({
       console.error("Deploy error:", error);
       setLoadingManager(false);
       setAction("");
+    }
+  };
+
+  const tokenAbi = [
+    {
+      "inputs": [{ "internalType": "address", "name": "account", "type": "address" }],
+      "name": "grantMintAndBurnRoles",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ];
+
+  const handleGrantRoles = async (tokenAddress: string) => {
+    try {
+      setAction("Asignando roles de mint/burn...");
+      await writeContractAsync({
+        address: tokenAddress as `0x${string}`,
+        abi: tokenAbi,
+        functionName: "grantMintAndBurnRoles",
+        args: [address],
+      });
+      setAction("Roles asignados correctamente");
+    } catch (error) {
+      console.error(error);
+      setAction("Error asignando roles");
+    } finally {
+      setLoadingManager(false);
     }
   };
 
@@ -133,6 +162,24 @@ export default function DeployTokensStep({
           )}
         </p>
       </div>
+
+      {tokenDeployed.fuji && data?.contractAddress && isFuji && (
+        <button
+          className="btn btn-accent w-full mt-2"
+          onClick={() => handleGrantRoles(data.contractAddress!)}
+        >
+          Asignar roles Mint/Burn a mi cuenta (Fuji)
+        </button>
+      )}
+
+      {tokenDeployed.arbitrum && data?.contractAddress && isArbitrum && (
+        <button
+          className="btn btn-accent w-full mt-2"
+          onClick={() => handleGrantRoles(data.contractAddress!)}
+        >
+          Asignar roles Mint/Burn a mi cuenta (Arbitrum)
+        </button>
+      )}
 
       <button
         className="btn btn-success mt-8"

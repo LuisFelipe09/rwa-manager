@@ -1,6 +1,6 @@
 // src/components/cross-chain/DeployPoolsStep.tsx
 import { useEffect, useState } from "react";
-import { useAccount, useDeployContract, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount, useDeployContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import {
   abi,
   bytecode,
@@ -44,6 +44,8 @@ export default function DeployPoolsStep({
   } = useWaitForTransactionReceipt({
     hash,
   });
+
+  const { writeContractAsync } = useWriteContract();
 
   useEffect(() => {
     console.log(isFuji, chain?.id);
@@ -99,6 +101,35 @@ export default function DeployPoolsStep({
     }
   };
 
+  // ABI mínima para el token
+  const tokenAbi = [
+    {
+      inputs: [{ internalType: "address", name: "pool", type: "address" }],
+      name: "grantMintAndBurnRoles",
+      outputs: [],
+      stateMutability: "nonpayable",
+      type: "function",
+    },
+  ];
+
+  const handleGrantRoles = async (tokenAddress: string, poolAddress: string) => {
+    try {
+      setAction("Asignando roles de mint/burn...");
+      await writeContractAsync({
+        address: tokenAddress as `0x${string}`,
+        abi: tokenAbi,
+        functionName: "grantMintAndBurnRoles",
+        args: [poolAddress],
+      });
+      setAction("Roles asignados correctamente");
+    } catch (error) {
+      console.error(error);
+      setAction("Error asignando roles");
+    } finally {
+      setLoadingManager(false);
+    }
+  };
+
   return (
     <div className="text-center">
       <h2 className="text-xl font-bold mb-4">Paso 2: Implementar Pools de Tokens</h2>
@@ -121,6 +152,15 @@ export default function DeployPoolsStep({
           >
             {tokenAddresses.fuji ? "Implementar Pool" : "Implementa Token Primero"}
           </button>
+          {tokenAddresses.fuji && data?.contractAddress && (
+            <button
+              className="btn btn-accent w-full mt-2"
+              onClick={() => handleGrantRoles(tokenAddresses.fuji, data.contractAddress!)}
+              disabled={!isFuji}
+            >
+              Asignar roles Mint/Burn al Pool
+            </button>
+          )}
         </div>
 
         <div className="bg-base-100 p-6 rounded-xl border border-secondary">
@@ -136,6 +176,15 @@ export default function DeployPoolsStep({
           >
             {tokenAddresses.arbitrum ? "Implementar Pool" : "Implementa Token Primero"}
           </button>
+          {tokenAddresses.arbitrum && data?.contractAddress && (
+            <button
+              className="btn btn-accent w-full mt-2"
+              onClick={() => handleGrantRoles(tokenAddresses.arbitrum, data.contractAddress!)}
+              disabled={!isArbitrum}
+            >
+              Asignar roles Mint/Burn al Pool
+            </button>
+          )}
         </div>
       </div>
       <button
