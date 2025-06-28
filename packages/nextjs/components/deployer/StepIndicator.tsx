@@ -26,6 +26,13 @@ export default function StepIndicator({
   const isStepComplete = (step: number) => {
     if (step === 1) return tokenAddresses.fuji && tokenAddresses.arbitrum;
     if (step === 2) return poolAddresses.fuji && poolAddresses.arbitrum;
+    if (step === 3)
+      return tokenAddresses.fuji && tokenAddresses.arbitrum && poolAddresses.fuji && poolAddresses.arbitrum;
+    if (step === 4) return tokenAddresses.fuji && tokenAddresses.arbitrum;
+    if (step === 5)
+      return tokenAddresses.fuji && tokenAddresses.arbitrum && poolAddresses.fuji && poolAddresses.arbitrum;
+    if (step === 6)
+      return tokenAddresses.fuji && tokenAddresses.arbitrum && poolAddresses.fuji && poolAddresses.arbitrum;
     return activeStep > step;
   };
 

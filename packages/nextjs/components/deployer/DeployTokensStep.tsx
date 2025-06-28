@@ -1,5 +1,6 @@
 // src/components/cross-chain/DeployTokensStep.tsx
 import { useEffect, useState } from "react";
+import { useAccount } from "wagmi";
 import { useDeployContract, useWaitForTransactionReceipt } from "wagmi";
 import {
   abi,
@@ -10,6 +11,7 @@ import { NETWORKS } from "~~/utils/ccip/config";
 
 interface DeployTokensStepProps {
   onDeploy: (address: string, network: string) => void;
+  onNextStep: () => void;
   currentNetwork?: number;
   setLoadingManager: (loading: boolean) => void;
   setAction: (action: string) => void;
@@ -17,37 +19,42 @@ interface DeployTokensStepProps {
 
 export default function DeployTokensStep({
   onDeploy,
+  onNextStep,
   currentNetwork,
   setLoadingManager,
   setAction,
 }: DeployTokensStepProps) {
+  const { chain } = useAccount();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [decimals, setDecimals] = useState("18");
   const [maxSupply, setMaxSupply] = useState("1000000");
   const [preMint, setPreMint] = useState("1000");
+  const [deployNetwork, setDeployNetwork] = useState<"fuji" | "arbitrum" | null>(null);
+  const [tokenDeployed, setTokenDeployed] = useState({ fuji: false, arbitrum: false });
 
-  // Hook de wagmi para preparar y ejecutar el despliegue
-  const {
-    data: hash, // El hash de la transacción de despliegue
-    isPending: isDeploying, // true mientras se envía la tx a la billetera
-    deployContract, // La función que llamaremos para desplegar
-  } = useDeployContract();
+  console.log("currentNetwork", currentNetwork);
 
-  // Hook de wagmi para esperar la confirmación de la tx y obtener el recibo
-  const {
-    data,
-    isLoading: isConfirming, // true mientras la tx está en la mempool
-    isSuccess: isConfirmed, // true una vez que la tx se confirma
-  } = useWaitForTransactionReceipt({
+  const { data: hash, deployContract } = useDeployContract();
+
+  const { data, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash,
   });
 
-  const handleDeploy = async () => {
-    try {
-      //setLoadingManager(true);
-      //setAction(`Deploying token on ${currentNetwork === NETWORKS.avalancheFuji.id ? "Avalanche Fuji" : "Arbitrum Sepolia"}`);
+  // Lógica para saber en qué red estamos
+  const [isFuji, setIsFuji] = useState(false);
+  const [isArbitrum, setIsArbitrum] = useState(false);
 
+  useEffect(() => {
+    console.log(isFuji, chain?.id);
+    setIsFuji(chain?.id === NETWORKS.avalancheFuji.id);
+    setIsArbitrum(chain?.id === NETWORKS.arbitrumSepolia.id);
+  }, [chain?.id]);
+
+  const handleDeploy = async (network: "fuji" | "arbitrum") => {
+    setDeployNetwork(network);
+    try {
+      setAction(`Deploying token on ${network === "fuji" ? "Avalanche Fuji" : "Arbitrum Sepolia"}`);
       await deployContract({
         abi,
         bytecode: bytecode as `0x${string}`,
@@ -61,15 +68,15 @@ export default function DeployTokensStep({
   };
 
   useEffect(() => {
-    console.log("Transaction status:", { isConfirmed, data, hash });
-
-    if (isConfirmed && data?.contractAddress) {
-      console.log("Contract deployed at:", data.contractAddress);
-      onDeploy(data.contractAddress, currentNetwork === NETWORKS.avalancheFuji.id ? "fuji" : "arbitrum");
+    if (isConfirmed && data?.contractAddress && deployNetwork) {
+      setTokenDeployed(prev => ({ ...prev, [deployNetwork]: true }));
+      onDeploy(data.contractAddress, deployNetwork);
       setLoadingManager(false);
       setAction("");
+      setDeployNetwork(null);
     }
-  }, [isConfirmed, data, hash, currentNetwork, onDeploy, setLoadingManager, setAction]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConfirmed, data, deployNetwork]);
 
   return (
     <div className="text-center">
@@ -86,18 +93,14 @@ export default function DeployTokensStep({
         <EtherInput value={preMint} onChange={setPreMint} placeholder="Pre-mint Amount" name="Pre-mint Amount" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-base-100 p-6 rounded-xl border border-primary">
           <div className="flex items-center mb-4">
             <div className="bg-avalanche w-8 h-8 rounded-full mr-3"></div>
             <h3 className="font-bold">Avalanche Fuji</h3>
           </div>
-          <button
-            className="btn btn-primary w-full"
-            onClick={() => handleDeploy()}
-            disabled={isDeploying || isConfirming}
-          >
-            Deploy Token
+          <button className="btn btn-primary w-full" onClick={() => handleDeploy("fuji")} disabled={!isFuji}>
+            {tokenDeployed.fuji ? "Deployed" : isFuji ? "Deploy Token" : "Switch to Fuji"}
           </button>
         </div>
 
@@ -106,15 +109,38 @@ export default function DeployTokensStep({
             <div className="bg-arbitrum w-8 h-8 rounded-full mr-3"></div>
             <h3 className="font-bold">Arbitrum Sepolia</h3>
           </div>
-          <button
-            className="btn btn-secondary w-full"
-            onClick={() => handleDeploy()}
-            disabled={isDeploying || isConfirming}
-          >
-            Deploy Token
+          <button className="btn btn-secondary w-full" onClick={() => handleDeploy("arbitrum")} disabled={!isArbitrum}>
+            {tokenDeployed.arbitrum ? "Deployed" : isArbitrum ? "Deploy Token" : "Switch to Arbitrum"}
           </button>
         </div>
       </div>
+
+      <div className="mb-4">
+        <p>
+          Avalanche Fuji:{" "}
+          {tokenDeployed.fuji ? (
+            <span className="text-success">Deployed</span>
+          ) : (
+            <span className="text-warning">Pending</span>
+          )}
+        </p>
+        <p>
+          Arbitrum Sepolia:{" "}
+          {tokenDeployed.arbitrum ? (
+            <span className="text-success">Deployed</span>
+          ) : (
+            <span className="text-warning">Pending</span>
+          )}
+        </p>
+      </div>
+
+      <button
+        className="btn btn-success mt-8"
+        onClick={onNextStep}
+        disabled={!(tokenDeployed.fuji && tokenDeployed.arbitrum)}
+      >
+        Next
+      </button>
     </div>
   );
 }

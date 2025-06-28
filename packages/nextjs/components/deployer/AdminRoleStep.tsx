@@ -1,8 +1,11 @@
-// src/components/cross-chain/AdminRoleStep.tsx
-import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useEffect, useState } from "react";
+import { useAccount, useWriteContract } from "wagmi";
+import { abi } from "~~/../hardhat/artifacts/@chainlink/contracts-ccip/contracts/tokenAdminRegistry/tokenAdminRegistry.sol/tokenAdminRegistry.json";
+import { useTransactor } from "~~/hooks/scaffold-eth";
 import { NETWORKS } from "~~/utils/ccip/config";
 
 interface AdminRoleStepProps {
+  tokenAddresses: { fuji: string; arbitrum: string };
   currentNetwork?: number;
   onComplete: () => void;
   setLoadingManager: (loading: boolean) => void;
@@ -10,44 +13,56 @@ interface AdminRoleStepProps {
 }
 
 export default function AdminRoleStep({
+  tokenAddresses,
   currentNetwork,
   onComplete,
   setLoadingManager,
   setAction,
 }: AdminRoleStepProps) {
-  const getNetworkConfig = () => {
-    if (currentNetwork === NETWORKS.avalancheFuji.id) return NETWORKS.avalancheFuji;
-    if (currentNetwork === NETWORKS.arbitrumSepolia.id) return NETWORKS.arbitrumSepolia;
-    return null;
+  const { chain } = useAccount();
+  const [isFuji, setIsFuji] = useState(false);
+  const [isArbitrum, setIsArbitrum] = useState(false);
+  const [adminRole, setAdminRole] = useState({ fuji: false, arbitrum: false });
+
+  useEffect(() => {
+    console.log(isFuji, chain?.id);
+    setIsFuji(chain?.id === NETWORKS.avalancheFuji.id);
+    setIsArbitrum(chain?.id === NETWORKS.arbitrumSepolia.id);
+  }, [chain?.id]);
+
+  const getTokenAddress = () => {
+    if (chain?.id === NETWORKS.avalancheFuji.id) return tokenAddresses.fuji;
+    if (chain?.id === NETWORKS.arbitrumSepolia.id) return tokenAddresses.arbitrum;
+    return "";
   };
 
-  const { writeContractAsync: registerAdmin } = useScaffoldWriteContract({
-    contractName: "RegistryModuleOwnerCustom",
-  });
-  const { writeContractAsync: acceptAdmin } = useScaffoldWriteContract({
-    contractName: "TokenAdminRegistry",
-  });
+  const getTokenAdminRegistryAddress = () => {
+    if (chain?.id === NETWORKS.avalancheFuji.id) return NETWORKS.avalancheFuji.tokenAdminRegistry;
+    if (chain?.id === NETWORKS.arbitrumSepolia.id) return NETWORKS.arbitrumSepolia.tokenAdminRegistry;
+    return "";
+  };
 
-  const handleClaimAdminRole = async (networkId: number) => {
-    setLoadingManager(true);
-    setAction(
-      `Registrando rol de administrador en ${networkId === NETWORKS.avalancheFuji.id ? "Avalanche Fuji" : "Arbitrum Sepolia"}`,
-    );
+  const { writeContractAsync, isPending } = useWriteContract();
+
+  const writeContractAsyncWithParams = () =>
+    writeContractAsync({
+      address: getTokenAdminRegistryAddress(),
+      abi: abi,
+      functionName: "acceptAdminRole",
+      args: [getTokenAddress()],
+    });
+
+  const writeTx = useTransactor();
+
+  const handleClaimAdminRole = async () => {
     try {
-      await registerAdmin({
-        functionName: "registerAdminViaOwner",
-        address: getNetworkConfig()?.registryModule,
-        args: [getNetworkConfig()?.tokenAdminRegistry],
-      });
-
       setAction("Aceptando rol de administrador...");
-      await acceptAdmin({
-        functionName: "acceptAdminRole",
-        address: getNetworkConfig()?.tokenAdminRegistry,
-      });
+
+      await writeTx(writeContractAsyncWithParams, { blockConfirmations: 2 });
+      const deployNetwork = currentNetwork === NETWORKS.avalancheFuji.id ? "fuji" : "arbitrum";
+      setAdminRole(prev => ({ ...prev, [deployNetwork]: true }));
 
       setLoadingManager(false);
-      onComplete();
     } catch (error) {
       console.error(error);
       setLoadingManager(false);
@@ -71,7 +86,11 @@ export default function AdminRoleStep({
             <div className="bg-avalanche w-8 h-8 rounded-full mr-3"></div>
             <h3 className="font-bold">Avalanche Fuji</h3>
           </div>
-          <button className="btn btn-primary w-full" onClick={() => handleClaimAdminRole(NETWORKS.avalancheFuji.id)}>
+          <button
+            className="btn btn-primary w-full"
+            onClick={() => handleClaimAdminRole()}
+            disabled={!isFuji || isPending}
+          >
             Reclamar Rol Admin
           </button>
         </div>
@@ -83,12 +102,16 @@ export default function AdminRoleStep({
           </div>
           <button
             className="btn btn-secondary w-full"
-            onClick={() => handleClaimAdminRole(NETWORKS.arbitrumSepolia.id)}
+            onClick={() => handleClaimAdminRole()}
+            disabled={!isArbitrum || isPending}
           >
             Reclamar Rol Admin
           </button>
         </div>
       </div>
+      <button className="btn btn-success mt-8" onClick={onComplete} disabled={!(adminRole.fuji && adminRole.arbitrum)}>
+        Next
+      </button>
     </div>
   );
 }

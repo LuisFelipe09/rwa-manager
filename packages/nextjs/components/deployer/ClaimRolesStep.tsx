@@ -1,5 +1,7 @@
-// src/components/cross-chain/ClaimRolesStep.tsx
-import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useEffect, useState } from "react";
+import { useAccount, useWriteContract } from "wagmi";
+import { abi } from "~~/../hardhat/artifacts/@chainlink/contracts-ccip/contracts/tokenAdminRegistry/RegistryModuleOwnerCustom.sol/RegistryModuleOwnerCustom.json";
+import { useTransactor } from "~~/hooks/scaffold-eth";
 import { NETWORKS } from "~~/utils/ccip/config";
 
 interface ClaimRolesStepProps {
@@ -19,37 +21,51 @@ export default function ClaimRolesStep({
   setLoadingManager,
   setAction,
 }: ClaimRolesStepProps) {
-  console.log("tokenAddresses:", tokenAddresses);
-  const getPoolAddress = () => {
-    if (currentNetwork === NETWORKS.avalancheFuji.id) return poolAddresses.fuji;
-    if (currentNetwork === NETWORKS.arbitrumSepolia.id) return poolAddresses.arbitrum;
+  const { chain } = useAccount();
+  const [isFuji, setIsFuji] = useState(false);
+  const [isArbitrum, setIsArbitrum] = useState(false);
+  const [roleClaimed, setRoleClaimed] = useState({ fuji: false, arbitrum: false });
+
+  useEffect(() => {
+    console.log(isFuji, chain?.id);
+    setIsFuji(chain?.id === NETWORKS.avalancheFuji.id);
+    setIsArbitrum(chain?.id === NETWORKS.arbitrumSepolia.id);
+  }, [chain?.id]);
+
+  const getTokenAddress = () => {
+    if (currentNetwork === NETWORKS.avalancheFuji.id) return tokenAddresses.fuji;
+    if (currentNetwork === NETWORKS.arbitrumSepolia.id) return tokenAddresses.arbitrum;
     return "";
   };
 
-  const { writeContractAsync: grantRoles } = useScaffoldWriteContract({
-    contractName: "BurnMintERC20",
-  });
+  const getregistryModuleOwnerCustom = () => {
+    if (currentNetwork === NETWORKS.avalancheFuji.id) return NETWORKS.avalancheFuji.registryModuleOwnerCustom;
+    if (currentNetwork === NETWORKS.arbitrumSepolia.id) return NETWORKS.arbitrumSepolia.registryModuleOwnerCustom;
+    return "";
+  };
 
-  const handleClaimRoles = async (networkId: number) => {
-    const poolAddress = networkId === NETWORKS.avalancheFuji.id ? poolAddresses.fuji : poolAddresses.arbitrum;
+  const { writeContractAsync, isPending } = useWriteContract();
 
-    if (!poolAddress) {
-      alert("Primero debes implementar el pool en esta red");
-      return;
-    }
+  const writeContractAsyncWithParams = () =>
+    writeContractAsync({
+      address: getregistryModuleOwnerCustom(),
+      abi: abi,
+      functionName: "registerAdminViaGetCCIPAdmin",
+      args: [getTokenAddress()],
+    });
 
-    setLoadingManager(true);
-    setAction(`Reclamando roles en ${networkId === NETWORKS.avalancheFuji.id ? "Avalanche Fuji" : "Arbitrum Sepolia"}`);
+  const writeTx = useTransactor();
+
+  const handleClaimRoles = async () => {
     try {
-      await grantRoles({
-        functionName: "grantMintAndBurnRoles",
-        args: [getPoolAddress()],
-      });
+      await writeTx(writeContractAsyncWithParams, { blockConfirmations: 2 });
+
+      const deployNetwork = currentNetwork === NETWORKS.avalancheFuji.id ? "fuji" : "arbitrum";
+      setRoleClaimed(prev => ({ ...prev, [deployNetwork]: true }));
+      setAction(`Reclamando roles de ${deployNetwork === "fuji" ? "Avalanche Fuji" : "Arbitrum Sepolia"}...`);
       setLoadingManager(false);
-      onComplete();
-    } catch (error) {
-      console.error(error);
-      setLoadingManager(false);
+    } catch (e) {
+      console.log("Unexpected error in writeTx", e);
     }
   };
 
@@ -67,11 +83,7 @@ export default function ClaimRolesStep({
             <h3 className="font-bold">Avalanche Fuji</h3>
           </div>
           <p className="text-sm mb-4 truncate">Pool: {poolAddresses.fuji || "No implementado"}</p>
-          <button
-            className="btn btn-primary w-full"
-            disabled={!poolAddresses.fuji}
-            onClick={() => handleClaimRoles(NETWORKS.avalancheFuji.id)}
-          >
+          <button className="btn btn-primary w-full" disabled={!isFuji || isPending} onClick={() => handleClaimRoles()}>
             Reclamar Roles
           </button>
         </div>
@@ -84,13 +96,20 @@ export default function ClaimRolesStep({
           <p className="text-sm mb-4 truncate">Pool: {poolAddresses.arbitrum || "No implementado"}</p>
           <button
             className="btn btn-secondary w-full"
-            disabled={!poolAddresses.arbitrum}
-            onClick={() => handleClaimRoles(NETWORKS.arbitrumSepolia.id)}
+            disabled={!isArbitrum || isPending}
+            onClick={() => handleClaimRoles()}
           >
             Reclamar Roles
           </button>
         </div>
       </div>
+      <button
+        className="btn btn-success mt-8"
+        onClick={onComplete}
+        disabled={!(roleClaimed.fuji && roleClaimed.arbitrum)}
+      >
+        Next
+      </button>
     </div>
   );
 }

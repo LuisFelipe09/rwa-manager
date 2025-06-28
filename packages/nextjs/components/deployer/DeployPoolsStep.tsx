@@ -1,5 +1,10 @@
 // src/components/cross-chain/DeployPoolsStep.tsx
-import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useEffect, useState } from "react";
+import { useAccount, useDeployContract, useWaitForTransactionReceipt } from "wagmi";
+import {
+  abi,
+  bytecode,
+} from "~~/../hardhat/artifacts/@chainlink/contracts-ccip/contracts/pools/BurnMintTokenPool.sol/BurnMintTokenPool.json";
 import { NETWORKS } from "~~/utils/ccip/config";
 
 interface DeployPoolsStepProps {
@@ -8,6 +13,7 @@ interface DeployPoolsStepProps {
   currentNetwork?: number;
   setLoadingManager: (loading: boolean) => void;
   setAction: (action: string) => void;
+  onNextStep: () => void;
 }
 
 export default function DeployPoolsStep({
@@ -16,16 +22,45 @@ export default function DeployPoolsStep({
   currentNetwork,
   setLoadingManager,
   setAction,
+  onNextStep,
 }: DeployPoolsStepProps) {
-  const getTokenAddress = () => {
-    if (currentNetwork === NETWORKS.avalancheFuji.id) return tokenAddresses.fuji;
-    if (currentNetwork === NETWORKS.arbitrumSepolia.id) return tokenAddresses.arbitrum;
-    return "";
-  };
+  const [tokenDeployed, setTokenDeployed] = useState({ fuji: false, arbitrum: false });
+  const localTokenDecimals = 18; // Decimales del token, puedes ajustarlo según tu implementación
+  // Lógica para saber en qué red estamos
+  const [isFuji, setIsFuji] = useState(false);
+  const [isArbitrum, setIsArbitrum] = useState(false);
+  const { chain } = useAccount();
+  // Hook de wagmi para preparar y ejecutar el despliegue
 
-  const { writeContractAsync: deployTokenPool } = useScaffoldWriteContract({
-    contractName: "BurnMintTokenPool",
+  const {
+    data: hash, // El hash de la transacción de despliegue
+    deployContract, // La función que llamaremos para desplegar
+  } = useDeployContract();
+
+  // Hook de wagmi para esperar la confirmación de la tx y obtener el recibo
+  const {
+    data,
+    isSuccess: isConfirmed, // true una vez que la tx se confirma
+  } = useWaitForTransactionReceipt({
+    hash,
   });
+
+  useEffect(() => {
+    console.log(isFuji, chain?.id);
+    setIsFuji(chain?.id === NETWORKS.avalancheFuji.id);
+    setIsArbitrum(chain?.id === NETWORKS.arbitrumSepolia.id);
+  }, [chain?.id]);
+
+  useEffect(() => {
+    if (isConfirmed && data?.contractAddress) {
+      const deployNetwork = currentNetwork === NETWORKS.avalancheFuji.id ? "fuji" : "arbitrum";
+      setTokenDeployed(prev => ({ ...prev, [deployNetwork]: true }));
+      console.log("Contract deployed at:", data.contractAddress);
+      onDeploy(data.contractAddress, deployNetwork);
+      setLoadingManager(false);
+      setAction("");
+    }
+  }, [isConfirmed, data]);
 
   const handleDeploy = async (networkId: number) => {
     const tokenAddress = networkId === NETWORKS.avalancheFuji.id ? tokenAddresses.fuji : tokenAddresses.arbitrum;
@@ -35,25 +70,29 @@ export default function DeployPoolsStep({
       return;
     }
 
-    setLoadingManager(true);
+    // Helper to get network config by id
+    const getNetworkConfig = (id: number) => {
+      if (id === NETWORKS.avalancheFuji.id) return NETWORKS.avalancheFuji;
+      if (id === NETWORKS.arbitrumSepolia.id) return NETWORKS.arbitrumSepolia;
+      throw new Error("Red no soportada");
+    };
+
     setAction(
       `Implementando pool en ${networkId === NETWORKS.avalancheFuji.id ? "Avalanche Fuji" : "Arbitrum Sepolia"}`,
     );
     try {
-      const txnReceipt = await deployTokenPool({
-        functionName: "deploy",
+      const { rmnProxy, router } = getNetworkConfig(networkId);
+      deployContract({
+        abi,
+        bytecode: bytecode as `0x${string}`,
         args: [
-          getTokenAddress(),
-          "0xE0dF6b5a9eA0D5E8B0c6568A0e6f3537bB0D0d0d", // Dirección del proxy ARM
+          tokenAddress,
+          localTokenDecimals,
+          [], // Allowlist (empty array)
+          rmnProxy,
+          router,
         ],
       });
-
-      if (txnReceipt) {
-        const poolAddress = txnReceipt;
-        const network = currentNetwork === NETWORKS.avalancheFuji.id ? "fuji" : "arbitrum";
-        onDeploy(poolAddress, network);
-      }
-      setLoadingManager(false);
     } catch (error) {
       console.error(error);
       setLoadingManager(false);
@@ -77,7 +116,7 @@ export default function DeployPoolsStep({
           <p className="text-sm mb-4 truncate">Token: {tokenAddresses.fuji || "No implementado"}</p>
           <button
             className="btn btn-primary w-full"
-            disabled={!tokenAddresses.fuji}
+            disabled={!isFuji}
             onClick={() => handleDeploy(NETWORKS.avalancheFuji.id)}
           >
             {tokenAddresses.fuji ? "Implementar Pool" : "Implementa Token Primero"}
@@ -92,13 +131,20 @@ export default function DeployPoolsStep({
           <p className="text-sm mb-4 truncate">Token: {tokenAddresses.arbitrum || "No implementado"}</p>
           <button
             className="btn btn-secondary w-full"
-            disabled={!tokenAddresses.arbitrum}
+            disabled={!isArbitrum}
             onClick={() => handleDeploy(NETWORKS.arbitrumSepolia.id)}
           >
             {tokenAddresses.arbitrum ? "Implementar Pool" : "Implementa Token Primero"}
           </button>
         </div>
       </div>
+      <button
+        className="btn btn-success mt-8"
+        onClick={onNextStep}
+        disabled={!(tokenDeployed.fuji && tokenDeployed.arbitrum)}
+      >
+        Next
+      </button>
     </div>
   );
 }

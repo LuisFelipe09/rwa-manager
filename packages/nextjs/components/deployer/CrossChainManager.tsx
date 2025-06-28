@@ -25,7 +25,6 @@ export default function CrossChainManager() {
     } else {
       setTokenAddresses(prev => ({ ...prev, arbitrum: address }));
     }
-    setActiveStep(2);
   };
 
   const handleDeployPool = (address: string, network: string) => {
@@ -34,7 +33,6 @@ export default function CrossChainManager() {
     } else {
       setPoolAddresses(prev => ({ ...prev, arbitrum: address }));
     }
-    setActiveStep(3);
   };
 
   const renderStepContent = () => {
@@ -46,6 +44,7 @@ export default function CrossChainManager() {
             currentNetwork={chain?.id}
             setLoadingManager={setLoadingManager}
             setAction={setCurrentAction}
+            onNextStep={() => setActiveStep(activeStep + 1)}
           />
         );
       case 2:
@@ -56,6 +55,7 @@ export default function CrossChainManager() {
             currentNetwork={chain?.id}
             setLoadingManager={setLoadingManager}
             setAction={setCurrentAction}
+            onNextStep={() => setActiveStep(activeStep + 1)}
           />
         );
       case 3:
@@ -72,6 +72,7 @@ export default function CrossChainManager() {
       case 4:
         return (
           <AdminRoleStep
+            tokenAddresses={tokenAddresses}
             currentNetwork={chain?.id}
             onComplete={() => setActiveStep(5)}
             setLoadingManager={setLoadingManager}
@@ -92,6 +93,7 @@ export default function CrossChainManager() {
       case 6:
         return (
           <ConfigurePoolsStep
+            tokenAddresses={tokenAddresses}
             currentNetwork={chain?.id}
             poolAddresses={poolAddresses}
             onComplete={() => setActiveStep(7)}
